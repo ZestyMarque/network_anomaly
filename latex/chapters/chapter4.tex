@@ -1,0 +1,210 @@
+\chapter{Разработка алгоритмов выявления аномалий сетевой активности}
+
+\section{Алгоритмы машинного обучения}
+
+Модуль обнаружения аномалий реализован в файле \texttt{src/detection/detector.py} и содержит класс \texttt{AnomalyDetector}, который предоставляет унифицированный интерфейс для трёх алгоритмов машинного обучения.
+
+\subsection{Isolation Forest}
+
+Изолирующий лес (Isolation Forest) — алгоритм, основанный на идее, что аномалии проще изолировать случайными разбиениями, чем нормальные объекты.
+
+\textbf{Принцип работы:}
+\begin{enumerate}
+    \item Строится ансамбль случайных деревьев решений (iTrees).
+    \item Для каждого дерева случайным образом выбирается признак и значение разделения.
+    \item Разбиение продолжается, пока все точки не будут изолированы или не будет достигнута максимальная глубина.
+    \item Аномальные точки изолируются на меньшей глубине, чем нормальные.
+    \item Аномалия определяется по среднему количеству разбиений, необходимых для изоляции точки:
+    \[
+    s(x, n) = 2^{-\frac{E(h(x))}{c(n)}}
+    \]
+    где \(E(h(x))\) — средняя глубина изоляции, \(c(n)\) — нормализующий коэффициент.
+\end{enumerate}
+
+Значение аномалии \(s \approx 1\) указывает на аномалию, \(s \ll 0.5\) — на нормальный объект.
+
+\textbf{Параметры:}
+\begin{itemize}
+    \item \texttt{n\_estimators} — количество деревьев (по умолчанию 100)
+    \item \texttt{contamination} — доля аномалий в данных (по умолчанию 0.15)
+    \item \texttt{random\_state} — фиксация случайности для воспроизводимости
+\end{itemize}
+
+\begin{lstlisting}[caption=Инициализация и обучение Isolation Forest, label=lst:if, language=Python]
+class AnomalyDetector:
+    def __init__(self, method='isolation_forest', **kwargs):
+        self.model = IsolationForest(
+            n_estimators=kwargs.get('n_estimators', 100),
+            contamination=kwargs.get('contamination', 'auto'),
+            random_state=42,
+        )
+
+    def fit(self, df, feature_cols=None):
+        X = df[feature_cols].fillna(0).values
+        X_scaled = self.scaler.fit_transform(X)
+        self.model.fit(X_scaled)
+        self.is_fitted = True
+        return self
+\end{lstlisting}
+
+\subsection{Local Outlier Factor (LOF)}
+
+LOF — метод, основанный на оценке локальной плотности объектов. Для каждой точки вычисляется отношение её локальной плотности к средней плотности k ближайших соседей.
+
+\textbf{Принцип работы:}
+\begin{enumerate}
+    \item Для каждой точки \(x\) находятся k ближайших соседей.
+    \item Вычисляется расстояние достижимости \(reach\_dist_k(x, y)\).
+    \item Вычисляется локальная плотность:
+    \[
+    lrd_k(x) = \frac{1}{\frac{\sum_{y \in N_k(x)} reach\_dist_k(x, y)}{|N_k(x)|}}
+    \]
+    \item Вычисляется LOF:
+    \[
+    LOF_k(x) = \frac{\sum_{y \in N_k(x)} \frac{lrd_k(y)}{lrd_k(x)}}{|N_k(x)|}
+    \]
+    \item Точки с \(LOF_k(x) \gg 1\) считаются аномалиями.
+\end{enumerate}
+
+\textbf{Параметры:}
+\begin{itemize}
+    \item \texttt{n\_neighbors} — количество соседей (по умолчанию 20)
+    \item \texttt{contamination} — доля аномалий (по умолчанию 0.15)
+\end{itemize}
+
+\subsection{One-Class SVM}
+
+Метод опорных векторов для одного класса строит разделяющую гиперплоскость, максимально отделяющую нормальные данные от начала координат в пространстве признаков, преобразованном с помощью ядер.
+
+\textbf{Принцип работы:}
+\begin{enumerate}
+    \item Данные отображаются в пространство признаков более высокой размерности с помощью функции ядра \(K(x, y)\).
+    \item Решается задача оптимизации, разделяющая данные от начала координат с максимальным зазором.
+    \item Решающая функция:
+    \[
+    f(x) = \text{sign}\left(\sum_{i=1}^n \alpha_i K(x_i, x) - \rho\right)
+    \]
+    \item Отрицательное значение \(f(x)\) указывает на аномалию.
+\end{enumerate}
+
+\textbf{Параметры:}
+\begin{itemize}
+    \item \texttt{kernel} — тип ядра (по умолчанию 'rbf')
+    \item \texttt{nu} — верхняя граница доли ошибок (по умолчанию 0.15)
+    \item \texttt{gamma} — параметр ядра RBF (по умолчанию 'auto')
+\end{itemize}
+
+\section{Rule-based детектор}
+
+В дополнение к ML-методам реализован детектор на эвристических правилах (класс \texttt{RuleBasedDetector}). Правила отражают известные паттерны аномального трафика:
+
+\begin{table}[H]
+\centering
+\caption{Эвристические правила обнаружения аномалий}
+\label{tab:rules}
+\begin{tabular}{p{3.5cm}p{4cm}p{7cm}}
+\toprule
+\textbf{Название правила} & \textbf{Условие} & \textbf{Описание} \\
+\midrule
+high\_syn\_ratio & syn\_ratio $>$ 0.8 & Более 80\% SYN-пакетов в окне — признак SYN-flood атаки \\
+\addlinespace
+high\_packet\_rate & pkts/sec $>$ 5000 & Аномально высокая частота пакетов — признак DDoS \\
+\addlinespace
+high\_port\_entropy & entropy $>$ 5.0 & Высокая энтропия портов — признак port scan \\
+\addlinespace
+many\_unique\_ports & unique\_ports $>$ 50 & Множество различных портов — признак port scan \\
+\addlinespace
+low\_pkt\_high\_bytes & pkts/sec $<$ 10 \& bytes/sec $>$ 1\,000\,000 & Мало пакетов с большим объёмом — признак утечки данных \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{lstlisting}[caption=Добавление правил, label=lst:rules, language=Python]
+@staticmethod
+def default_rules():
+    detector = RuleBasedDetector()
+    detector.add_rule(
+        'high_syn_ratio',
+        lambda r: r.get('syn_ratio', 0) > 0.8,
+        severity='high',
+    )
+    detector.add_rule(
+        'high_packet_rate',
+        lambda r: r.get('packets_per_sec', 0) > 5000,
+        severity='high',
+    )
+    # ... и другие правила
+    return detector
+\end{lstlisting}
+
+\section{Сравнение методов}
+
+Для объективной оценки качества работы алгоритмов использовались следующие метрики:
+
+\begin{equation}
+\label{eq:precision}
+\text{Precision} = \frac{TP}{TP + FP},\quad
+\text{Recall} = \frac{TP}{TP + FN}
+\end{equation}
+
+\begin{equation}
+\label{eq:f1}
+F_1 = 2 \cdot \frac{\text{Precision} \cdot \text{Recall}}{\text{Precision} + \text{Recall}}
+\end{equation}
+
+где TP — истинно-положительные, FP — ложно-положительные, FN — ложно-отрицательные решения.
+
+Сравнение проводилось на синтетическом наборе данных из 5750 пакетов (включая 750 аномальных), агрегированных в 124 временных окна.
+
+\begin{table}[H]
+\centering
+\caption{Сравнение методов обнаружения аномалий}
+\label{tab:comparison_results}
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Метод} & \textbf{Precision} & \textbf{Recall} & \textbf{F1} & \textbf{Accuracy} & \textbf{FPR} \\
+\midrule
+Isolation Forest & 0.158 & 1.000 & 0.273 & 0.872 & 0.131 \\
+LOF & 0.200 & 1.000 & 0.333 & 0.904 & 0.098 \\
+One-Class SVM & 0.158 & 1.000 & 0.273 & 0.871 & 0.132 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Анализ результатов:}
+
+\begin{itemize}
+    \item Все три метода показали Recall = 1.0, что означает 100\%-ное обнаружение аномалий в тестовом наборе.
+    \item Лучший результат по F1-мере показал LOF (0.333), что обусловлено более низкой долей ложных срабатываний (FPR = 0.098 против 0.131--0.132).
+    \item Умеренные значения Precision (0.158--0.200) связаны с консервативной настройкой contamination и высокой дисперсией нормального трафика.
+    \item Rule-based детектор показал 1 срабатывание за период, что подтверждает его вспомогательную роль.
+\end{itemize}
+
+Визуализация результатов сравнения представлена на рисунке~\ref{fig:method_comparison}. Для её получения необходимо выполнить команду:
+
+\begin{lstlisting}[caption=Запуск сравнения методов и генерации графиков, label=lst:run_compare, language=bash]
+cd network-anomaly-platform
+python run_full.py
+# Графики сохраняются в data/plots/
+\end{lstlisting}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{method_comparison.png}
+\caption{Сравнение методов машинного обучения}
+\label{fig:method_comparison}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.65\textwidth]{confusion_matrix.png}
+\caption{Матрица ошибок (Confusion Matrix)}
+\label{fig:confusion_matrix}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{roc_curve.png}
+\caption{ROC-кривая}
+\label{fig:roc_curve}
+\end{figure}

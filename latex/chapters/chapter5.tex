@@ -1,0 +1,149 @@
+\chapter{Тестирование системы}
+
+\section{Модульное тестирование}
+
+Для обеспечения качества разработанного программного обеспечения было написано 19 автоматизированных тестов с использованием фреймворка pytest. Тесты покрывают два основных модуля системы: сбор данных и обнаружение аномалий.
+
+\subsection{Тестирование модуля сбора данных}
+
+Файл \texttt{tests/test\_collector.py} содержит 8 тестов, проверяющих корректность генерации синтетического трафика:
+
+\begin{table}[H]
+\centering
+\caption{Тесты модуля сбора данных}
+\label{tab:tests_collector}
+\begin{tabular}{p{5cm}p{9.5cm}}
+\toprule
+\textbf{Название теста} & \textbf{Проверяемое поведение} \\
+\midrule
+test\_generate\_normal & Генерация 100 пакетов нормального трафика с корректным набором полей \\
+test\_generate\_normal\_protocol\_distribution & Распределение протоколов: TCP 60-80\%, UDP 20-30\%, ICMP 3-7\% \\
+test\_generate\_ddos & Генерация DDoS-атак с IP 10.0.0.0/24, порт 80, флаг SYN \\
+test\_generate\_port\_scan & Генерация port scan с одним источником и разными портами \\
+test\_generate\_bruteforce & Генерация bruteforce на порт 22 с одного IP \\
+test\_generate\_data\_exfiltration & Генерация exfiltration с крупными пакетами (среднее $>$ 800 байт) \\
+test\_generate\_mixed\_traffic & Комбинированная генерация с правильным распределением меток \\
+test\_generate\_mixed\_traffic\_ordering & Хронологическая упорядоченность сгенерированного трафика \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Тестирование детекторов}
+
+Файл \texttt{tests/test\_detector.py} содержит 11 тестов, проверяющих работу алгоритмов обнаружения:
+
+\begin{table}[H]
+\centering
+\caption{Тесты модуля обнаружения}
+\label{tab:tests_detector}
+\begin{tabular}{p{5cm}p{9.5cm}}
+\toprule
+\textbf{Название теста} & \textbf{Проверяемое поведение} \\
+\midrule
+test\_isolation\_forest & Обучение и предсказание Isolation Forest \\
+test\_lof & Обучение и предсказание LOF \\
+test\_one\_class\_svm & Обучение и предсказание One-Class SVM \\
+test\_rule\_detector & Инициализация rule-based детектора с правилами по умолчанию \\
+test\_rule\_detector\_triggers & Срабатывание правил на синтетических данных \\
+test\_rule\_high\_syn & Детектирование SYN-флуда по правилу (syn\_ratio $>$ 0.8) \\
+test\_rule\_high\_packet\_rate & Детектирование высокой частоты пакетов \\
+test\_save\_load\_model & Сохранение и загрузка обученной модели через joblib \\
+test\_feature\_extractor\_windows & Корректность выделения временных окон и вычисления признаков \\
+test\_feature\_extractor\_empty & Обработка пустого DataFrame (должен вернуть пустой результат) \\
+test\_end\_to\_end\_detection & Сквозное детектирование: генерация, обработка, обнаружение \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Результаты тестирования}
+
+Запуск тестов выполняется командой:
+
+\begin{lstlisting}[caption=Запуск тестов, label=lst:run_tests, language=bash]
+cd network-anomaly-platform
+python -m pytest tests/ -v
+\end{lstlisting}
+
+Ожидаемый результат выполнения:
+
+\begin{lstlisting}[caption=Результат запуска тестов, label=lst:test_output, language=bash]
+tests/test_collector.py::test_generate_normal PASSED
+tests/test_collector.py::test_generate_normal_protocol_distribution PASSED
+tests/test_collector.py::test_generate_ddos PASSED
+tests/test_collector.py::test_generate_port_scan PASSED
+tests/test_collector.py::test_generate_bruteforce PASSED
+tests/test_collector.py::test_generate_data_exfiltration PASSED
+tests/test_collector.py::test_generate_mixed_traffic PASSED
+tests/test_collector.py::test_generate_mixed_traffic_ordering PASSED
+tests/test_detector.py::test_isolation_forest PASSED
+tests/test_detector.py::test_lof PASSED
+tests/test_detector.py::test_one_class_svm PASSED
+tests/test_detector.py::test_rule_detector PASSED
+tests/test_detector.py::test_rule_detector_triggers PASSED
+tests/test_detector.py::test_rule_high_syn PASSED
+tests/test_detector.py::test_rule_high_packet_rate PASSED
+tests/test_detector.py::test_save_load_model PASSED
+tests/test_detector.py::test_feature_extractor_windows PASSED
+tests/test_detector.py::test_feature_extractor_empty PASSED
+tests/test_detector.py::test_end_to_end_detection PASSED
+
+========================== 19 passed in 9.26s ===========================
+\end{lstlisting}
+
+Результат выполнения тестов отображён на рисунке~\ref{fig:tests}.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\textwidth]{test_results.png}
+\caption{Результаты выполнения модульных тестов}
+\label{fig:tests}
+\end{figure}
+
+\textit{Примечание:} для получения скриншота с результатами тестов выполните команду \texttt{python -m pytest tests/ -v} и сделайте скриншот терминала. Сохраните его как \texttt{images/test\_results.png}.
+
+\section{Интеграционное тестирование}
+
+Интеграционное тестирование выполняется скриптом \texttt{run\_full.py}, который запускает полный цикл работы платформы:
+
+\begin{enumerate}
+    \item Генерация смешанного трафика: 5000 нормальных + 750 аномальных пакетов (4 типа атак).
+    \item Агрегация во временные окна размером 2 секунды.
+    \item Сравнение трёх ML-методов на выделенных признаках.
+    \item Применение rule-based детектора.
+    \item Вывод метрик качества (Precision, Recall, F1, Accuracy).
+    \item Генерация 8 графиков визуализации.
+    \item Сохранение результатов в CSV-файлы.
+    \item Сохранение обученной модели Isolation Forest.
+\end{enumerate}
+
+Запуск интеграционного теста:
+
+\begin{lstlisting}[caption=Запуск интеграционного тестирования, label=lst:run_integration, language=bash]
+cd network-anomaly-platform
+python run_full.py
+\end{lstlisting}
+
+\section{Визуализация результатов}
+
+Модуль визуализации (\texttt{src/visualization/plots.py}) автоматически генерирует 8 типов графиков. Для их получения необходимо запустить \texttt{run\_full.py}. Таблица~\ref{tab:plots} описывает каждый график.
+
+\begin{table}[H]
+\centering
+\caption{Графики, генерируемые модулем визуализации}
+\label{tab:plots}
+\begin{tabular}{p{3.5cm}p{4.5cm}p{6.5cm}}
+\toprule
+\textbf{Файл} & \textbf{Тип графика} & \textbf{Назначение} \\
+\midrule
+time\_series\_anomalies.png & Временные ряды (4 признака) & Визуализация трафика с выделением аномалий \\
+confusion\_matrix.png & Тепловая карта & Матрица ошибок классификации \\
+anomaly\_score\_distribution.png & Гистограмма + scatter & Распределение оценок аномалий \\
+feature\_correlation.png & Корреляционная матрица & Взаимосвязи между признаками \\
+features\_heatmap.png & Тепловая карта признаков & Нормализованные z-score признаки \\
+roc\_curve.png & ROC-кривая & Зависимость TPR от FPR \\
+precision\_recall\_curve.png & PR-кривая & Зависимость Precision от Recall \\
+method\_comparison.png & Столбчатая диаграмма & Сравнение метрик трёх методов \\
+\bottomrule
+\end{tabular}
+\end{table}
+\end{chapter}

@@ -1,0 +1,122 @@
+\chapter{Архитектура приложения}
+
+\section{Общая архитектура системы}
+
+Платформа реализована по модульному принципу «конвейерной обработки» (pipeline), где каждый этап обработки данных выполняется независимым модулем с чётко определённым интерфейсом. Такой подход обеспечивает:
+
+\begin{itemize}
+    \item \textbf{Слабое связывание} — каждый модуль может быть изменён или заменён без влияния на остальные компоненты.
+    \item \textbf{Тестируемость} — каждый модуль может тестироваться независимо.
+    \item \textbf{Расширяемость} — новые алгоритмы обнаружения могут быть добавлены без изменения существующего кода.
+    \item \textbf{Повторное использование} — модули могут использоваться в других проектах.
+\end{itemize}
+
+Архитектура системы включает следующие основные компоненты:
+
+\begin{enumerate}
+    \item \textbf{Модуль сбора данных} (Collector) — отвечает за захват сетевого трафика из различных источников: live-захват, PCAP-файлы, генератор синтетических данных.
+    \item \textbf{Модуль потоковой обработки} (Processing) — выполняет извлечение признаков из сырых пакетов и агрегацию во временные окна.
+    \item \textbf{Модуль обнаружения} (Detection) — реализует алгоритмы машинного обучения и эвристические правила для выявления аномалий.
+    \item \textbf{Модуль визуализации} (Visualization) — строит графики и диаграммы для анализа результатов.
+    \item \textbf{Модуль управления} (Pipeline) — координирует работу всех модулей и обеспечивает единый интерфейс.
+\end{enumerate}
+
+\section{Схема архитектуры}
+
+Общая схема взаимодействия модулей представлена на рисунке~\ref{fig:architecture}.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\textwidth]{architecture.png}
+\caption{Архитектура платформы}
+\label{fig:architecture}
+\end{figure}
+
+\textit{Примечание:} файл \texttt{images/architecture.png} необходимо создать самостоятельно на основе описания. Рекомендуется использовать draw.io (diagrams.net) или любой другой редактор диаграмм.
+
+Последовательность обработки данных в конвейере:
+
+\begin{enumerate}
+    \item Пакеты захватываются модулем \texttt{PacketCapture} (live/PCAP) или генерируются модулем \texttt{PacketGenerator}.
+    \item Модуль \texttt{FeatureExtractor} агрегирует пакеты во временные окна и вычисляет признаки.
+    \item Модуль \texttt{AnomalyDetector} (ML) и \texttt{RuleBasedDetector} (правила) анализируют признаки и выявляют аномалии.
+    \item Модуль визуализации строит графики на основе результатов детектирования.
+\end{enumerate}
+
+\section{Структура файлов проекта}
+
+Проект имеет следующую структуру файлов:
+
+\begin{lstlisting}[caption=Структура проекта, label=lst:structure, language=bash]
+network-anomaly-platform/
+├── main.py                      # Точка входа (CLI-интерфейс)
+├── run_full.py                  # Полный прогон анализа
+├── requirements.txt             # Зависимости проекта
+├── src/
+│   ├── __init__.py
+│   ├── collector/
+│   │   ├── __init__.py
+│   │   └── packet_capture.py    # Захват трафика, генерация данных
+│   ├── processing/
+│   │   ├── __init__.py
+│   │   └── feature_extractor.py # Извлечение признаков
+│   ├── detection/
+│   │   ├── __init__.py
+│   │   └── detector.py          # ML-детекторы + rule-based
+│   ├── visualization/
+│   │   ├── __init__.py
+│   │   └── plots.py             # Построение 8 типов графиков
+│   ├── utils/
+│   │   ├── __init__.py
+│   │   └── helpers.py           # Утилиты (IO, логирование)
+│   ├── comparison.py            # Сравнение методов
+│   └── pipeline.py              # Конвейер обработки
+├── tests/
+│   ├── test_collector.py        # 8 тестов модуля сбора
+│   └── test_detector.py         # 11 тестов детекторов
+├── notebooks/
+│   └── full_analysis.ipynb      # Jupyter notebook
+└── data/
+    ├── plots/                   # PNG-графики (8 файлов)
+    ├── full_results.csv         # Результаты детектирования
+    ├── window_features.csv      # Признаки по окнам
+    ├── traffic_data.csv         # Сырые пакеты
+    └── model_isolation_forest.joblib  # Обученная модель
+\end{lstlisting}
+
+\section{Диаграмма классов}
+
+На рисунке~\ref{fig:class_diagram} представлена диаграмма классов основных компонентов системы.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{class_diagram.png}
+\caption{Диаграмма классов системы}
+\label{fig:class_diagram}
+\end{figure}
+
+\textit{Примечание:} файл \texttt{images/class\_diagram.png} создаётся аналогично. Для построения диаграммы классов можно использовать PlantUML или draw.io.
+
+Описание основных классов:
+
+\begin{itemize}
+    \item \textbf{PacketCapture} — захват трафика (live/PCAP). Использует Scapy для перехвата пакетов. Работает в отдельном потоке, складывая извлечённые признаки в очередь.
+    \item \textbf{PacketGenerator} — генератор синтетического трафика. Создаёт нормальный трафик с заданными характеристиками и аномальные паттерны (DDoS, port scan, bruteforce, data exfiltration).
+    \item \textbf{FeatureExtractor} — извлечение признаков. Выполняет агрегацию сырых пакетов во временные окна с вычислением 23 статистических метрик.
+    \item \textbf{AnomalyDetector} — ML-детектор. Оборачивает алгоритмы scikit-learn (IsolationForest, LocalOutlierFactor, OneClassSVM).
+    \item \textbf{RuleBasedDetector} — детектор на правилах. Содержит набор эвристических правил для выявления аномалий.
+    \item \textbf{DetectionPipeline} — конвейер. Координирует работу FeatureExtractor, AnomalyDetector и RuleBasedDetector.
+\end{itemize}
+
+\section{Поток данных}
+
+Обработка данных в системе осуществляется следующим образом:
+
+\begin{enumerate}
+    \item Пакеты захватываются модулем \texttt{PacketCapture} (или генерируются \texttt{PacketGenerator}) и преобразуются в плоские словари признаков (один словарь на пакет).
+    \item Словари собираются в список, который конвертируется в \texttt{DataFrame} библиотеки Pandas.
+    \item \texttt{FeatureExtractor.aggregate\_window()} группирует строки DataFrame по временным окнам и вычисляет статистические признаки для каждого окна.
+    \item \texttt{AnomalyDetector} обучается на полученных признаках (unsupervised) и предсказывает метки аномалий для каждого окна.
+    \item \texttt{RuleBasedDetector} параллельно применяет эвристические правила.
+    \item Результаты объединяются, сохраняются в CSV и передаются модулю визуализации.
+\end{enumerate}

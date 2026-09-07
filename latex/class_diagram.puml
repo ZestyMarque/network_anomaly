@@ -1,0 +1,78 @@
+@startuml
+!theme plain
+
+title Диаграмма классов системы
+
+class PacketCapture {
+  - interface: str
+  - max_packets: int
+  - packet_queue: Queue
+  - packets_buffer: list
+  + start(): void
+  + stop(): void
+  + load_pcap(path: str): int
+  + get_packets_dataframe(): DataFrame
+  - _extract_features(packet): dict
+  - _capture_loop(): void
+}
+
+class PacketGenerator {
+  - base_ip: str
+  - normal_ports: list
+  - client_ips: list
+  + generate_normal_traffic(n: int): DataFrame
+  + generate_ddos(n: int): DataFrame
+  + generate_port_scan(n: int): DataFrame
+  + generate_bruteforce(n: int): DataFrame
+  + generate_data_exfiltration(n: int): DataFrame
+  + generate_mixed_traffic(n: int, configs: list): tuple
+}
+
+class FeatureExtractor {
+  - window_size: float
+  + aggregate_window(df: DataFrame): DataFrame
+  + extract_packet_features(row: Series): dict
+  - _entropy(series: Series): float
+}
+
+class AnomalyDetector {
+  - method: str
+  - model: object
+  - scaler: StandardScaler
+  - feature_cols_: list
+  - is_fitted: bool
+  + fit(df: DataFrame): self
+  + predict(df: DataFrame): DataFrame
+  + detect_streaming(window_df, history_df): DataFrame
+  + save_model(path: str): void
+  + load_model(path: str): self
+}
+
+class RuleBasedDetector {
+  - rules: list
+  + add_rule(name, condition, severity): void
+  + detect(df: DataFrame): DataFrame
+  + default_rules(): RuleBasedDetector
+}
+
+class DetectionPipeline {
+  - feature_extractor: FeatureExtractor
+  - ml_detector: AnomalyDetector
+  - rule_detector: RuleBasedDetector
+  + run_offline(df, method): DataFrame
+  + run_offline_with_labels(df, labels): DataFrame
+}
+
+FeatureExtractor --> PacketCapture : получает DataFrame пакетов
+DetectionPipeline --> FeatureExtractor : использует
+DetectionPipeline --> AnomalyDetector : использует
+DetectionPipeline --> RuleBasedDetector : использует
+
+note top of AnomalyDetector
+  Оборачивает:
+  - IsolationForest
+  - LocalOutlierFactor
+  - OneClassSVM
+end note
+
+@enduml
