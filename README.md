@@ -3,7 +3,7 @@
 ## Возможности
 
 - Захват сетевого трафика: live-режим, загрузка PCAP-файлов, генератор синтетических данных (DDoS, port scan, bruteforce, data exfiltration)
-- Агрегация пакетов во временные окна с извлечением 23 статистических признаков (включая энтропийные метрики)
+- Агрегация пакетов во временные окна с извлечением 23 статистических признаков
 - Обнаружение аномалий: Isolation Forest, LOF, One-Class SVM + эвристический rule-based детектор
 - Сравнение методов ML с метриками Precision / Recall / F1 / Accuracy
 - 19 автоматизированных тестов (pytest)
@@ -11,15 +11,6 @@
 ## Архитектура
 
 Конвейерная (pipeline) модульная архитектура:
-
-```
-[Packet Capture] → [Feature Extraction] → [Anomaly Detection] → [Visualization]
-       │                    │                      │
-  - Live capture       - Window aggregation   - Isolation Forest
-  - PCAP import        - Statistical features - LOF
-  - Synthetic gen.     - Entropy metrics      - One-Class SVM
-                                                - Rule-based rules
-```
 
 ```
 network-anomaly-platform/
